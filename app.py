@@ -58,11 +58,6 @@ pending_dir = "pending/"
 if not os.path.exists(pending_dir):
     os.mkdir(pending_dir)
 
-# api token as file directory
-token_dir = "token/"
-if not os.path.exists(token_dir):
-    os.mkdir(token_dir)
-
 
 def get_rest_result(title, time_line, time_data, total_damage, debuff_value):
     rest_result = {"title": title, "timeline": time_line, "process_time": time_data, "total_damage": total_damage,

@@ -393,7 +393,6 @@ def analyze_movie(movie_path):
     roi_init(video_type)
 
     n = 0.34
-    ub_interval = 0
 
     time_min = "1"
     time_sec10 = "3"
@@ -409,6 +408,7 @@ def analyze_movie(movie_path):
     damage_data_roi = DAMAGE_DATA_ROI
 
     ub_data = []
+    ub_data_enemy = []
     ub_data_value = []
     time_data = []
     characters_find = []
@@ -417,7 +417,10 @@ def analyze_movie(movie_path):
     total_damage = False
 
     cap_interval = int(frame_rate * n)
-    skip_frame = 5 * cap_interval
+    past_time = 90
+    time_count = 0
+    find_time = "1:30"
+    enemy_ub = "――――敵UB――――"
 
     if (frame_count / frame_rate) < 600:  # only check less than 10 min movie
         for i in range(frame_count):  # cycle check movie per frame
@@ -426,7 +429,7 @@ def analyze_movie(movie_path):
                 break
 
             if i % cap_interval is 0:
-                if ((i - ub_interval) > skip_frame) or (ub_interval == 0):
+                if time_count >= 0:
                     ret, original_frame = video.read()
 
                     if ret is False:
@@ -458,11 +461,18 @@ def analyze_movie(movie_path):
                         time_sec10 = analyze_timer_frame(work_frame, tensec_roi, 6, time_sec10)
                         time_sec1 = analyze_timer_frame(work_frame, onesec_roi, 10, time_sec1)
 
-                        ub_result = analyze_ub_frame(work_frame, ub_roi, time_min, time_sec10, time_sec1,
-                                                     ub_data, ub_data_value, characters_find)
+                        ub_result, find_id = analyze_ub_frame(work_frame, ub_roi, time_min, time_sec10, time_sec1,
+                                                              ub_data, ub_data_enemy, ub_data_value, characters_find)
 
-                        if ub_result is FOUND:
-                            ub_interval = i
+                        past_time, find_time, time_count, enemy_result = count_up(time_min, time_sec10, time_sec1,
+                                                                                  past_time,
+                                                                                  find_time, ub_result, find_id,
+                                                                                  time_count, cap_interval)
+                        if enemy_result is FOUND:
+                            menu_check = analyze_menu_frame(work_frame, MENU_DATA, MENU_ROI)[0]
+
+                            if menu_check is True:
+                                ub_data_enemy.append(find_time + " " + enemy_ub)
 
                         # check score existence
                         ret = analyze_score_frame(work_frame, SCORE_DATA, score_roi)
@@ -474,7 +484,12 @@ def analyze_movie(movie_path):
                             if ret is True:
                                 total_damage = "".join(tmp_damage)
 
+                            if enemy_ub in ub_data_enemy[-1]:
+                                ub_data_enemy.pop()
+
                             break
+                else:
+                    time_count += 1
 
     video.release()
     cm.clear_path(movie_path)
@@ -488,7 +503,10 @@ def analyze_movie(movie_path):
 
     status = get_analyze_status(ub_data, video_type)
 
-    return ub_data, time_data, total_damage, debuff_value, status
+    if status is not state.DONE:
+        ub_data_enemy = False
+
+    return ub_data, ub_data_enemy, time_data, total_damage, debuff_value, status
 
 
 def edit_frame(frame):
@@ -538,7 +556,7 @@ def expand_frame(frame):
     return work_frame
 
 
-def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_data_value, characters_find):
+def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_data_enemy, ub_data_value, characters_find):
     """analyze frame to find ub name
 
     analyze ub name roi and find best match character
@@ -551,11 +569,13 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_dat
         time_10sec (string): 10 sec value
         time_sec (string): 1 sec value
         ub_data (list): ub name data
+        ub_data_enemy (list): ub name data with enemy ub
         ub_data_value (list): founded ub data
         characters_find (list): founded characters
 
     Returns
         ub_result (string): ub FOUND or NOT_FOUND
+        find_id (int): find characters id
 
 
     """
@@ -563,6 +583,7 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_dat
 
     characters_num = len(CHARACTERS)
     ub_result = NOT_FOUND
+    find_id = 0
     tmp_character = [False, 0]
     tmp_value = UB_THRESH
 
@@ -576,9 +597,12 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_dat
                 tmp_character = [CHARACTERS[j], j]
                 tmp_value = max_val
                 ub_result = FOUND
+                find_id = j
 
         if ub_result is FOUND:
-            ub_data.append(time_min + ":" + time_10sec + time_sec + " " + tmp_character[0])
+            tl = time_min + ":" + time_10sec + time_sec + " " + tmp_character[0]
+            ub_data.append(tl)
+            ub_data_enemy.append(tl)
             ub_data_value.extend([[int(int(time_min) * 60 + int(time_10sec) * 10 + int(time_sec)), tmp_character[1]]])
             if tmp_character[1] not in characters_find:
                 characters_find.append(tmp_character[1])
@@ -592,12 +616,15 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_dat
                 tmp_character = [CHARACTERS[characters_find[j]], characters_find[j]]
                 tmp_value = max_val
                 ub_result = FOUND
+                find_id = characters_find[j]
 
         if ub_result is FOUND:
-            ub_data.append(time_min + ":" + time_10sec + time_sec + " " + tmp_character[0])
+            tl = time_min + ":" + time_10sec + time_sec + " " + tmp_character[0]
+            ub_data.append(tl)
+            ub_data_enemy.append(tl)
             ub_data_value.extend([[int(int(time_min) * 60 + int(time_10sec) * 10 + int(time_sec)), tmp_character[1]]])
 
-    return ub_result
+    return ub_result, find_id
 
 
 def analyze_timer_frame(frame, roi, data_num, time_data):
@@ -875,3 +902,47 @@ def get_analyze_status(ub_data, video_type):
             status = state.ERR_INCOMPLETE_IN_HD
 
     return status
+
+
+def count_up(time_min, time_sec10, time_sec1, past_time, find_time, ub_result, find_id, time_count, cap_interval):
+    """count time after ub
+
+
+    Args
+        time_min (string): minute
+        time_sec10 (string): 10sec
+        time_sec1 (string): 1sec
+        past_time (int): 0~90
+        find_time (string): m:ss
+        ub_result (string): FOUND / NOT_FOUND
+        find_id (int): find character id
+        time_count (int): count up after ub
+        interval (int): read frame interval
+
+
+    Returns
+        past_time (int): 0~90
+        find_time (string): m:ss
+        time_count (int): count up after ub
+        enemy_result (string): FOUND / NOT_FOUND
+
+    """
+    enemy_result = NOT_FOUND
+    now_time = int(time_min) * 60 + int(time_sec10) * 10 + int(time_sec1)
+
+    if past_time > now_time:
+        past_time = now_time
+        time_count = 0
+    else:
+        time_count += 1
+
+    if time_count > 6:
+        new_time = time_min + ":" + time_sec10 + time_sec1
+        if find_time != new_time:
+            find_time = new_time
+            enemy_result = FOUND
+
+    if ub_result is FOUND:
+        time_count = -1 * int(cd.ub_time_table[find_id] / cap_interval)
+
+    return past_time, find_time, time_count, enemy_result

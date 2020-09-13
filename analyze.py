@@ -936,7 +936,7 @@ def count_up(time_min, time_sec10, time_sec1, past_time, find_time, ub_result, f
     else:
         time_count += 1
 
-    if time_count > 6:
+    if time_count > 7:
         new_time = time_min + ":" + time_sec10 + time_sec1
         if find_time != new_time:
             find_time = new_time
